@@ -3,17 +3,17 @@ import logging
 import uvicorn
 from fastapi import FastAPI
 
-from router.chatbot_router import router
+from router.chatbot_router import chatbot_router
+from router.finance_assistant import finance_router
+from router.summarize_router import summarize_router
 
 logger = logging.getLogger("main")
 
 app = FastAPI()
 
-app.include_router(router)
-
-@app.get("/")
-def read_root():
-    return {"message": "Hello, FastAPI!"}
+app.include_router(chatbot_router)
+app.include_router(finance_router)
+app.include_router(summarize_router)
 
 if __name__ == "__main__":
     try:
