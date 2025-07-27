@@ -10,6 +10,8 @@ from fastapi.responses import StreamingResponse
 from langchain_ollama import ChatOllama
 from langchain_core.outputs import ChatResult
 
+from mcp_server_demo import initialize_mcp_client, load_mcp_config
+
 load_dotenv()
 
 OLLAMA_URL = os.getenv("OLLAMA_URL")
@@ -42,18 +44,45 @@ async def call_ollama(prompt: str):
                 if done_flag:
                     break
 
-async def call_ollama_with_langchain(prompt: str) -> AsyncGenerator[ChatResult, None]:
+async def call_chatOllama(question: str) -> AsyncGenerator[ChatResult, None]:
     """
     LangChain ChatOllama를 사용하여 Ollama 모델을 호출하고 스트리밍 응답을 생성함.
     """
-    ollama = ChatOllama(model=MODEL, base_url = OLLAMA_URL)
+    _, mcp_tools = await initialize_mcp_client()
+    system_prompt = """
+    당신은 도움이 되는 AI 어시스턴트입니다.
+    도구는 다음 경우에만 사용하세요:
+    - 실시간 정보가 필요한 경우
+    - 계산이나 파일 작업이 필요한 경우
+    - 외부 데이터 검색이 필요한 경우
 
-    async def stream():
-        async for token in ollama.astream(prompt):
-            yield token
+    인사말, 일반적인 질문, 이미 알고 있는 정보에 대해서는 도구를 사용하지 마세요.
+    """
+
+    ollama = ChatOllama(
+        model=MODEL,
+        base_url = OLLAMA_URL,
+        system = system_prompt
+    ).bind_tools(mcp_tools)
+
+    final_response = await ollama.invoke(question)
+
+    print(f"Final response: {final_response}")
+
+    if 'messages' in final_response:
+        for message in final_response['messages']:
+            if hasattr(message, 'content') and message.content:
+                if not (hasattr(message, 'type') and message.type == 'human'):
+                    yield message.content
+    else:
+        yield "No response received from agent"
+
+    # async def stream():
+    #     async for token in ollama.astream(prompt):
+    #         yield token
         
-    async for message in stream():
-        yield message
+    # async for message in stream():
+    #     yield message
 
 @app.post("/invoke/ollama_url")
 async def invoke(req: Request):
@@ -75,7 +104,7 @@ async def invoke(req: Request):
     prompt = (await req.json()).get("input", "")
     async def event_stream():
         try:
-            async for message in call_ollama_with_langchain(prompt):
+            async for message in call_chatOllama(prompt):
                 content = message.content
                 yield f"data: {json.dumps({'content':content})}\n\n"
         finally:

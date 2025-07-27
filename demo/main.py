@@ -1,4 +1,5 @@
 import time
+import threading
 
 import uvicorn
 
@@ -18,19 +19,16 @@ def run_mcp_server():
     mcp.run(transport="sse")
 
 def run_gradio_ui():
-    from ui.gradio_ui import demo
+    from ui import demo
     demo.launch(server_name="0.0.0.0", server_port=7860)
 
 def main():
-    import threading
     gateway_thread = threading.Thread(target=run_mcp_gateway, daemon=True)
     gateway_thread.start()
-
-    time.sleep(1)
+    time.sleep(2)
 
     mcp_thread = threading.Thread(target=run_mcp_server, daemon=True)
     mcp_thread.start()
-
     time.sleep(3)
 
     run_gradio_ui()
