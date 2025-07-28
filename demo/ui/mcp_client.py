@@ -7,6 +7,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GATEWAY = os.getenv("GATEWAY_URL")
+
+def ask_mcp(prompt: str):
+    headers = {"Accept":"text/event-stream"}
+
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL")
 
 class MCPClient:
@@ -46,7 +50,6 @@ class MCPClient:
 def ask_mcp(prompt: str):
     headers = {"Accept":"text/event-stream"}
     ENDPOINT = GATEWAY.rstrip("/")
-
     with httpx.stream(
         "POST",
         GATEWAY,
@@ -55,6 +58,26 @@ def ask_mcp(prompt: str):
         timeout=None
     ) as response:
         response.raise_for_status()
+        buffer = ""
+        for chunk in response.iter_raw():
+            text = chunk.decode("utf-8", errors='replace')
+            buffer += text
+            while "\n" in buffer:
+                line, buffer = buffer.split("\n",1)
+                if not line.strip():
+                    continue
+                if line.startswith("data:"):
+                    payload = line[len("data:"):].strip()
+                    try:
+                        obj = json.loads(payload)
+                        if "content" in obj:
+                            yield obj["content"]
+                    except json.JSONDecodeError:
+                        pass
+                elif line.startswith("event:"):
+                    evt = line[len("event:"):].strip()
+                    if evt == "done":
+                        return 
         for raw_line in response.iter_lines():
             if isinstance(raw_line, bytes):
                 line = raw_line.decode("utf-8", errors="replace").strip()
