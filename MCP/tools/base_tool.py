@@ -1,8 +1,12 @@
+"""Base tool class for all MCP tools."""
+
+from abc import ABC, abstractmethod
 from typing import Any
 
 
-class Tool:
-    """Represents a tool with its properties and formatting."""
+class BaseTool(ABC):
+    """Abstract base class for all tools."""
+
     def __init__(
         self,
         name: str,
@@ -39,8 +43,33 @@ class Tool:
             output += f"User-readable title: {self.title}\n"
 
         output += f"""Description: {self.description}
-        Arguments:
-        {chr(10).join(args_desc)}
-        """
+Arguments:
+{chr(10).join(args_desc)}
+"""
 
         return output
+
+    @abstractmethod
+    async def execute(self, arguments: dict[str, Any]) -> Any:
+        """Execute the tool with given arguments.
+        
+        Args:
+            arguments: Tool arguments
+            
+        Returns:
+            Tool execution result
+        """
+        pass
+
+    def __str__(self) -> str:
+        """String representation of the tool."""
+        return f"{self.__class__.__name__}(name={self.name}, title={self.title})"
+
+    def __repr__(self) -> str:
+        """Detailed string representation of the tool."""
+        return (
+            f"{self.__class__.__name__}("
+            f"name='{self.name}', "
+            f"title='{self.title}', "
+            f"description='{self.description[:50]}...')"
+        )
