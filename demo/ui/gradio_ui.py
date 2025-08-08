@@ -21,7 +21,6 @@ def chat_fn(message, history, session_id):
     history = history or []
     history.append((message, ""))
     bot_reply = ""
-
     try:
         session_manager.add_message(session_id, "user", message)
 
@@ -212,6 +211,11 @@ with gr.Blocks(
     clear_chat_btn.click(
         clear_current_chat,
         outputs=[chatbot, txt_input]
+    )
+    clear_btn.click(
+        clear_chat,
+        outputs=[chatbot, txt],
+        queue=False
     )
 
 def launch_ui(host="0.0.0.0", port=7860, share=False, debug=False):
