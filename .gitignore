@@ -1,2 +1,4 @@
-.env
+*.env
+*.pdf
+*.txt
 __pycache__
