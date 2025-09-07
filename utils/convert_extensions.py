@@ -99,9 +99,9 @@ async def main(pdf_path:str):
     if os.path.exists(pdf_path):
         print("=== 단일 PDF 파일 변환 ===")
         text = await converter.convert_pdf_to_text(pdf_path)
-        
+
         print(f"추출된 텍스트 미리보기:\n{text[:500]}...")
     
 if __name__ == "__main__":
     pdf_path = "/Users/hansol/llm/LLM/data/pdf/대학생을 위한 실용금융(제3판 교재)_책갈피F.pdf"
-    asyncio.run(main(pdf_path=pdf_path))
+    asyncio.run(main(pdf_path=pdf_path)) 

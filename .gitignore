@@ -1,4 +1,6 @@
 *.env
 *.pdf
 *.txt
+.sqlite3
 __pycache__
+utils/chroma_db
