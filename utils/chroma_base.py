@@ -8,65 +8,109 @@ from datetime import datetime
 
 
 class BaseChromeDBManager:
-    """ChromaDB 기본 관리 클래스"""
+    """ChromaDB Base Management Class"""
     
-    def __init__(self, db_path: str = "./chroma_db", collection_name: str = None):
-        """ChromaDB 기본 매니저 초기화
+    def __init__(self, db_path: str = "./chroma_db", collection_name: str = None, log_path: str = "./logs"):
+        """Initialize ChromaDB Base Manager
         
         Args:
-            db_path: ChromaDB 데이터베이스 경로
-            collection_name: 사용할 컬렉션 이름 (None이면 컬렉션에 연결하지 않음)
+            db_path: ChromaDB database path
+            collection_name: Collection name to use (if None, does not connect to collection)
+            log_path: Directory path where log files will be stored
         """
         self.db_path = db_path
         self.collection_name = collection_name
         
-        # 로깅 설정
-        logging.basicConfig(level=logging.INFO)
-        self.logger = logging.getLogger(__name__)
+        # Create log directory
+        self.log_path = Path(log_path)
+        self.log_path.mkdir(parents=True, exist_ok=True)
         
-        # ChromaDB 클라이언트 초기화
+        # Setup logging
+        self._setup_logging()
+        
+        # Initialize ChromaDB client
         try:
             self.client = chromadb.PersistentClient(path=db_path)
             
-            # collection_name이 주어진 경우에만 컬렉션에 연결
+            # Connect to collection only if collection_name is provided
             if collection_name:
                 self.collection = self.client.get_collection(name=collection_name)
                 doc_count = self.collection.count()
-                self.logger.info(f"컬렉션 '{collection_name}' 연결됨 (문서 수: {doc_count})")
+                self.logger.info(f"Connected to collection '{collection_name}' (document count: {doc_count})")
             else:
                 self.collection = None
-                self.logger.info("ChromaDB 클라이언트만 초기화됨")
+                self.logger.info("ChromaDB client initialized only")
                 
         except Exception as e:
             if collection_name:
-                self.logger.error(f"컬렉션 '{collection_name}' 연결 실패: {e}")
-                raise ValueError(f"컬렉션 '{collection_name}'을 찾을 수 없습니다: {e}")
+                self.logger.error(f"Failed to connect to collection '{collection_name}': {e}")
+                raise ValueError(f"Cannot find collection '{collection_name}': {e}")
             else:
-                self.logger.error(f"ChromaDB 클라이언트 초기화 실패: {e}")
-                raise ValueError(f"ChromaDB 연결 실패: {e}")
+                self.logger.error(f"Failed to initialize ChromaDB client: {e}")
+                raise ValueError(f"ChromaDB connection failed: {e}")
+    
+    def _setup_logging(self):
+        """Setup logging configuration"""
+        # Generate log filename with current timestamp
+        current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_filename = f"chromadb_{current_time}.log"
+        log_file_path = self.log_path / log_filename
+        
+        # Create logger
+        self.logger = logging.getLogger(f"ChromaDBManager_{id(self)}")
+        self.logger.setLevel(logging.INFO)
+        
+        # Remove existing handlers to prevent duplication
+        if self.logger.handlers:
+            self.logger.handlers.clear()
+        
+        # Create file handler (save logs to file)
+        file_handler = logging.FileHandler(log_file_path, encoding='utf-8')
+        file_handler.setLevel(logging.INFO)
+        
+        # Create console handler (output to console)
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        
+        # Create formatter
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        
+        file_handler.setFormatter(formatter)
+        console_handler.setFormatter(formatter)
+        
+        # Add handlers
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(console_handler)
+        
+        # Log file path information
+        self.logger.info(f"Log file created: {log_file_path}")
     
     def __enter__(self):
-        """Context manager 진입"""
+        """Context manager entry"""
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager 종료"""
-        # 필요시 정리 작업 수행
+        """Context manager exit"""
         pass
     
-    # ================== 기본 정보 조회 ==================
+    # ================== Basic Information Retrieval ==================
     
     def list_all_collections(self) -> List[str]:
-        """데이터베이스 내 모든 컬렉션 목록"""
+        """List all collections in the database"""
         try:
             collections = self.client.list_collections()
-            return [col.name for col in collections]
+            collection_names = [col.name for col in collections]
+            self.logger.info(f"Collection list retrieved successfully: {len(collection_names)} collections")
+            return collection_names
         except Exception as e:
-            self.logger.error(f"컬렉션 목록 조회 실패: {e}")
+            self.logger.error(f"Failed to retrieve collection list: {e}")
             return []
     
     def get_collections_detailed_info(self) -> Dict[str, Any]:
-        """모든 컬렉션의 상세 정보 조회"""
+        """Retrieve detailed information for all collections"""
         try:
             collections = self.client.list_collections()
             detailed_info = []
@@ -77,7 +121,7 @@ class BaseChromeDBManager:
                     count = col_obj.count()
                     metadata = collection.metadata or {}
                     
-                    # 샘플 메타데이터 키 조회
+                    # Retrieve sample metadata keys
                     sample_metadata_keys = []
                     if count > 0:
                         sample_data = col_obj.peek(limit=1)
@@ -92,6 +136,8 @@ class BaseChromeDBManager:
                         "status": "accessible"
                     })
                     
+                    self.logger.info(f"Collection '{collection.name}' info collected successfully (document count: {count})")
+                    
                 except Exception as col_error:
                     detailed_info.append({
                         "name": collection.name,
@@ -101,7 +147,9 @@ class BaseChromeDBManager:
                         "status": f"error: {col_error}",
                         "error": str(col_error)
                     })
+                    self.logger.error(f"Failed to collect info for collection '{collection.name}': {col_error}")
             
+            self.logger.info(f"Detailed info retrieval completed for all collections: {len(detailed_info)} collections")
             return {
                 "total_collections": len(detailed_info),
                 "collections": detailed_info,
@@ -109,7 +157,7 @@ class BaseChromeDBManager:
             }
             
         except Exception as e:
-            self.logger.error(f"컬렉션 상세 정보 조회 실패: {e}")
+            self.logger.error(f"Failed to retrieve detailed collection information: {e}")
             return {
                 "total_collections": 0,
                 "collections": [],
@@ -118,20 +166,23 @@ class BaseChromeDBManager:
             }
     
     def get_collection_info(self) -> Dict[str, Any]:
-        """컬렉션 기본 정보 조회"""
+        """Retrieve basic collection information"""
         if not self.collection:
-            return {"error": "컬렉션이 연결되지 않음", "status": "error"}
+            self.logger.warning("Cannot retrieve collection info - no collection connected")
+            return {"error": "No collection connected", "status": "error"}
             
         try:
             count = self.collection.count()
             metadata = self.collection.metadata or {}
             
-            # 샘플 데이터 조회
+            # Retrieve sample data
             sample_metadata_keys = []
             if count > 0:
                 sample_data = self.collection.peek(limit=1)
                 if sample_data['metadatas'] and len(sample_data['metadatas']) > 0:
                     sample_metadata_keys = list(sample_data['metadatas'][0].keys())
+            
+            self.logger.info(f"Collection '{self.collection_name}' info retrieved successfully (document count: {count})")
             
             return {
                 "collection_name": self.collection_name,
@@ -142,16 +193,18 @@ class BaseChromeDBManager:
                 "status": "success"
             }
         except Exception as e:
-            self.logger.error(f"컬렉션 정보 조회 실패: {e}")
-            return {"error": f"정보 조회 실패: {e}", "status": "error"}
+            self.logger.error(f"Failed to retrieve collection information: {e}")
+            return {"error": f"Info retrieval failed: {e}", "status": "error"}
     
     def get_sample_documents(self, limit: int = 5) -> Dict[str, Any]:
-        """샘플 문서 조회"""
+        """Retrieve sample documents"""
         if not self.collection:
-            return {"error": "컬렉션이 연결되지 않음", "status": "error"}
+            self.logger.warning("Cannot retrieve sample documents - no collection connected")
+            return {"error": "No collection connected", "status": "error"}
             
         try:
             if self.collection.count() == 0:
+                self.logger.info("Collection is empty")
                 return {"sample_count": 0, "documents": [], "status": "empty"}
             
             actual_limit = min(limit, self.collection.count())
@@ -169,87 +222,77 @@ class BaseChromeDBManager:
                     "metadata": results['metadatas'][i] if results['metadatas'] else {}
                 })
             
+            self.logger.info(f"Sample documents retrieved successfully: {len(documents)} documents")
+            
             return {
                 "sample_count": len(documents),
                 "documents": documents,
                 "status": "success"
             }
         except Exception as e:
-            self.logger.error(f"샘플 조회 실패: {e}")
-            return {"error": f"샘플 조회 실패: {e}", "status": "error"}
-
+            self.logger.error(f"Sample retrieval failed: {e}")
+            return {"error": f"Sample retrieval failed: {e}", "status": "error"}
 
 if __name__ == "__main__":
-    print("🔥 ChromaDB 컬렉션 확인 도구")
-    print("=" * 50)
-    
     try:
-        # 1. 먼저 컬렉션에 연결하지 않고 클라이언트만 초기화
-        print("📁 ChromaDB 연결 중...")
+        # 1. Initialize client only without connecting to collection
         manager = BaseChromeDBManager(db_path="./chroma_db", collection_name=None)
         
-        # 2. 컬렉션 목록 확인
-        print("\n📋 사용 가능한 컬렉션:")
-        print("-" * 30)
+        # 2. Check collection list
         available_collections = manager.list_all_collections()
         
         if not available_collections:
-            print("❌ 컬렉션이 없습니다.")
+            print("No collections found")
         else:
-            print(f"총 {len(available_collections)}개 컬렉션:")
+            print(f"Total {len(available_collections)} collections:")
             for i, name in enumerate(available_collections, 1):
                 print(f"  {i}. {name}")
         
-        # 3. 상세 정보 확인
-        print("\n🗂️ 컬렉션 상세 정보:")
-        print("-" * 30)
+        # 3. Check detailed information
+        print("\nCollection detailed information:")
         detailed_info = manager.get_collections_detailed_info()
         
         if detailed_info['status'] == 'success':
             for collection in detailed_info['collections']:
-                print(f"\n컬렉션: {collection['name']}")
-                print(f"  📊 문서 수: {collection['document_count']}")
-                print(f"  🔍 상태: {collection['status']}")
+                print(f"Collection: {collection['name']}")
+                print(f"Document count: {collection['document_count']}")
+                print(f"Status: {collection['status']}")
                 if collection['sample_metadata_keys']:
-                    print(f"  🏷️ 메타데이터 키: {collection['sample_metadata_keys']}")
+                    print(f"Metadata keys: {collection['sample_metadata_keys']}")
                 if collection['collection_metadata']:
-                    print(f"  📝 컬렉션 메타데이터: {collection['collection_metadata']}")
+                    print(f"Collection metadata: {collection['collection_metadata']}")
+                print("-" * 40)
         else:
-            print(f"❌ 상세 정보 조회 실패: {detailed_info.get('error')}")
+            print(f"Failed to retrieve detailed information: {detailed_info.get('error')}")
         
-        # 4. 특정 컬렉션에 연결해서 더 자세히 보기 (첫 번째 컬렉션 사용)
+        # 4. Connect to specific collection for more details (using first collection)
         if available_collections:
             first_collection = available_collections[0]
-            print(f"\n📄 '{first_collection}' 컬렉션의 샘플 문서:")
-            print("-" * 30)
-            
+            print(f"\nSample documents from '{first_collection}' collection:")
             try:
-                # 특정 컬렉션에 연결
+                # Connect to specific collection
                 collection_manager = BaseChromeDBManager(
                     db_path="./chroma_db", 
                     collection_name=first_collection
                 )
                 
-                # 샘플 문서 조회
+                # Retrieve sample documents
                 samples = collection_manager.get_sample_documents(limit=3)
                 if samples['status'] == 'success' and samples['documents']:
                     for i, doc in enumerate(samples['documents'], 1):
-                        print(f"\n문서 {i}:")
-                        print(f"  ID: {doc['id']}")
-                        print(f"  내용: {doc['text'][:100]}...")
-                        print(f"  길이: {doc['full_length']} 글자")
-                        print(f"  메타데이터: {doc['metadata']}")
+                        print(f"Document {i}:")
+                        print(f"ID: {doc['id']}")
+                        print(f"Content: {doc['text'][:100]}...")
+                        print(f"Length: {doc['full_length']} characters")
+                        print(f"Metadata: {doc['metadata']}")
+                        print("-" * 30)
                 else:
-                    print("샘플 문서가 없습니다.")
+                    print("No sample documents available.")
                     
             except Exception as e:
-                print(f"❌ '{first_collection}' 컬렉션 연결 실패: {e}")
+                print(f"Failed to connect to '{first_collection}' collection: {e}")
         
-        print("\n✨ 컬렉션 확인 완료!")
+        print("\nCollection inspection completed!")
         
     except Exception as e:
-        print(f"❌ ChromaDB 연결 실패: {e}")
-        print("\n가능한 원인:")
-        print("1. chroma_db 폴더가 존재하지 않음")
-        print("2. ChromaDB가 설치되지 않음 (pip install chromadb)")
-        print("3. 권한 문제")
+        print(f"ChromaDB connection failed: {e}")
